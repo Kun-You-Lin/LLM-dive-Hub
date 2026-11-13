@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Agent 核心架構：ReAct 循環與 Karpathy LLM Wiki 實戰 - LLM Dive Hub</title>
+  <meta name="description" content="掌握 Thought-Action-Observation 自主決策循環，並實作 Andrej Karpathy 提倡的持久複利 LLM Wiki 模式與 AGENTS.md 規範。">
+  <link rel="stylesheet" href="../../assets/css/global.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    /* Agent 互動沙盒專屬樣式 */
+    .agent-sim-box {
+      background: var(--bg-card);
+      border: 1.5px solid var(--ink-border);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      margin: 20px 0;
+    }
+    .timeline-step {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+      position: relative;
+    }
+    .timeline-step::before {
+      content: "";
+      position: absolute;
+      left: 18px;
+      top: 36px;
+      bottom: -16px;
+      width: 2px;
+      background: var(--ink-border);
+    }
+    .timeline-step:last-child::before {
+      display: none;
+    }
+    .step-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--bg-subtle);
+      border: 2px solid var(--ink-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 0.85rem;
+      z-index: 2;
+      flex-shrink: 0;
+    }
+    .step-icon.active {
+      background: var(--accent-emerald);
+      color: #FFFFFF;
+      border-color: var(--accent-emerald);
+      box-shadow: 0 0 12px rgba(5, 150, 105, 0.4);
+    }
+    .step-content {
+      background: var(--bg-page);
+      border: 1px solid var(--ink-border);
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+      flex-grow: 1;
+    }
+    .step-tag {
+      font-size: 0.75rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: inline-block;
+      margin-bottom: 4px;
+    }
+    .tag-thought { color: var(--accent-purple); }
+    .tag-action { color: var(--primary); }
+    .tag-obs { color: var(--accent-amber); }
+    .tag-final { color: var(--accent-emerald); }
+  </style>
+</head>
+<body>
+  <div class="reading-progress-bar" id="progressBar"></div>
+
+  <header class="top-nav">
+    <div class="nav-container">
+      <a href="../../index.html" class="back-link">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+        <span>返回講義庫首頁</span>
+      </a>
+      <span style="font-weight: 700; color: var(--accent-emerald); font-size: 0.95rem;">單元 03 ・ AI Agent 實戰</span>
+    </div>
+  </header>
+
+  <main class="lesson-wrap">
+    <header class="lesson-hero">
+      <span class="lesson-badge" style="background: var(--accent-emerald-light); color: var(--accent-emerald);">AI Agent 實戰篇</span>
+      <h1 class="lesson-title">AI Agent 核心架構：ReAct 循環與 Karpathy LLM Wiki 實戰</h1>
+      <p class="lesson-subtitle">
+        從單純聊天機器人進化為自主智慧體！掌握思考、工具調用與持久複利知識庫維護。
+      </p>
+      <div class="lesson-meta-bar">
+        <span>⏱️ 預估閱讀 20 分鐘</span>
+        <span>📊 難度：系統設計</span>
+        <span>🔄 2026-11 更新</span>
+      </div>
+    </header>
+
+    <section class="lesson-section goals-card">
+      <h2 style="font-size: 1.25rem; margin-bottom: 8px;">🎯 本單元學習目標</h2>
+      <ul class="goals-list">
+        <li>理解 ReAct（Reasoning + Acting）循環如何賦予 LLM 動態規劃與自我除錯的能力。</li>
+        <li>掌握 Andrej Karpathy 提出的「LLM Wiki Pattern」核心精神：拒絕拋棄式 RAG，打造持久知識庫。</li>
+        <li>深入理解為何 <code>AGENTS.md</code> / <code>CLAUDE.md</code> 能成為引導 AI Agent 正確開發專案的「專案憲法」。</li>
+      </ul>
+    </section>
+
+    <!-- 核心架構 -->
+    <section class="lesson-section">
+      <h2>🧠 什麼是 ReAct 模式？（Reasoning + Acting）</h2>
+      <p>
+        傳統的 Prompt Engineering 只要求模型「一次回答到底」，當面對複雜的多步驟任務（例如：查天氣、比價、寫程式並測試）時，模型極易在開頭就產生幻覺並一路錯到底。
+      </p>
+      <p>
+        2022 年 Yao 等人提出的 <b>ReAct 模式</b>，讓模型具備「思考（Thought）」與「行動（Action）」的交替循環：
+      </p>
+      <ul>
+        <li><b>Thought（思考）</b>：在動手前，先進行內心獨白，拆解當前局勢。「我現在掌握了什麼？還缺少什麼資訊？」</li>
+        <li><b>Action（行動）</b>：調用外部工具（如搜尋引擎、資料庫查詢、執行 Python 程式碼、閱讀檔案）。</li>
+        <li><b>Observation（觀察）</b>：將工具執行的真實回傳結果餵回給模型，讓模型感知真實世界的反饋。</li>
+        <li><b>Next Thought / Finish</b>：若資訊足夠則輸出最終解答，否則繼續進入下一輪 Thought！</li>
+      </ul>
+    </section>
+
+    <!-- 互動沙盒 -->
+    <section class="lesson-section">
+      <h2>🧪 互動體驗沙盒：ReAct 自主決策模擬器</h2>
+      <p>點選下方按鈕，逐步觀察 AI Agent 如何自主拆解任務、調用天氣 API，並根據即時反饋調整結論：</p>
+
+      <div class="sandbox-card">
+        <div class="sandbox-header">
+          <span class="sandbox-title" style="color: var(--accent-emerald);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+            即時 ReAct 決策演練場
+          </span>
+          <button id="btnNextStep" style="background: var(--accent-emerald); color: #FFFFFF; border: none; padding: 6px 16px; border-radius: 6px; font-weight: 700; cursor: pointer;">下一步 (Next Step) →</button>
+        </div>
+
+        <div style="background: var(--bg-subtle); padding: 12px 16px; border-radius: 6px; margin-bottom: 20px;">
+          <b>任務輸入 (User Goal)：</b>「請問今天台北下午適合去大佳河濱公園慢跑嗎？」
+        </div>
+
+        <div id="timelineContainer">
+          <!-- 動態步驟節點 -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Karpathy LLM Wiki Pattern -->
+    <section class="lesson-section">
+      <h2>📚 關鍵突破：Andrej Karpathy 的「LLM Wiki Pattern」</h2>
+      <p>
+        AI 大師 Andrej Karpathy 近期指出：現行的傳統 RAG 有著根本缺陷——<b>知識無法複利累積（No Compounding Returns）</b>。
+        每次提問時，系統重新抓取碎片、重新拼湊，用完即丟。
+      </p>
+      <p>
+        Karpathy 提倡的 <b>LLM Wiki Pattern</b> 提出全新視角：
+      </p>
+      <ul>
+        <li><b>持久的維基資產（Persistent Compounding Artifact）</b>：維護一個結構化的 Markdown 知識庫（包含 Papers、Concepts、Topics、Synthesis）。</li>
+        <li><b>LLM 作為專業知識庫維護者（Curator & Maintainer）</b>：每當讀入新文獻，Agent 負責發散更新（Fan-out）相關頁面、建立雙向連結、標記學術爭端、維護索引與歷史紀錄。</li>
+        <li><b>人機協同分工</b>：人類負責挑選高價值素材與方向，Agent 負責繁重的格式整理與跨文獻整合。</li>
+      </ul>
+
+      <div class="callout callout-note">
+        <b>⭐ 專案憲法（AGENTS.md / CLAUDE.md）的深層價值：</b><br>
+        就像本講義庫一樣，當我們在專案根目錄建立完善的 <code>AGENTS.md</code> 時，任何新進的 AI Agent 都能第一時間理解本專案的目錄結構、配色原則、HTML 樣板與新增頁面 SOP。這正是從「單次隨性寫 Code（Vibe Coding）」走向「企業級可持續協作」的核心分水嶺！
+      </div>
+    </section>
+
+    <!-- 隨堂思考題 -->
+    <section class="lesson-section">
+      <h2>🤔 隨堂思考題</h2>
+      <details class="quiz-item">
+        <summary>問題 1：在多 Agent 協作（Multi-Agent）架構中，為什麼需要有 Coordinator（協調者）角色？</summary>
+        <div class="quiz-answer">
+          <p>
+            <b>解答：</b>當任務龐大時（如同時進行文獻檢索、代碼撰寫、單元測試、網頁部署），如果所有 Agent 各自行動容易發生死鎖、重複勞動或上下文衝突。Coordinator 負責維護全局任務清單（Backlog），將大任務切分成子目標分配給專責 Worker，並審查 Worker 回報的產出，確保整體方向與專案規範完全一致。
+          </p>
+        </div>
+      </details>
+
+      <details class="quiz-item">
+        <summary>問題 2：為什麼本週作業強調建立 AGENTS.md 而不是單純把網頁做出來？</summary>
+        <div class="quiz-answer">
+          <p>
+            <b>解答：</b>因為單純做出一個網頁只是一次性的成果（One-off deliverable）；而建立一套具備規則、模板、SOP 的 <code>AGENTS.md</code>，代表你為這個專案建立了一套「數位憲法」。未來無論隔了多久、換成哪一款 AI，只要丟進這份指引，AI 就能以相同的品質標準與視覺風格，源源不絕地擴充新功能或新頁面，這才是現代 AI 工程化開發的核心競爭力！
+          </p>
+        </div>
+      </details>
+    </section>
+
+    <nav class="lesson-pagination">
+      <a href="../rag-system-design/index.html" class="btn-nav-page btn-prev">← 上一單元：現代 RAG 系統設計</a>
+      <a href="../../index.html" class="btn-nav-page btn-next">返回講義庫目錄首頁 🏠</a>
+    </nav>
+  </main>
+
+  <footer class="footer">
+    <p>© 2026 LLM Dive Hub ・ 遵循 AGENTS.md 規範開發 ｜ 中正大學 資管所 林坤佑</p>
+  </footer>
+
+  <script>
+    window.addEventListener('scroll', () => {
+      const winScroll = document.documentElement.scrollTop;
+      const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+      const scrolled = (winScroll / height) * 100;
+      document.getElementById('progressBar').style.width = scrolled + '%';
+    });
+
+    const steps = [
+      {
+        tag: 'tag-thought',
+        label: 'Thought 1 (內心思考)',
+        content: '使用者詢問今天台北下午是否適合去大佳河濱公園慢跑。我需要先確認大佳河濱公園的所在城市（台北），並調用天氣工具查詢今日下午的氣溫、降雨機率與是否有強風/雷雨警報。'
+      },
+      {
+        tag: 'tag-action',
+        label: 'Action 1 (調用外部工具)',
+        content: '<code>get_weather(location="Taipei", timeframe="afternoon")</code>'
+      },
+      {
+        tag: 'tag-obs',
+        label: 'Observation 1 (工具回傳數據)',
+        content: '<code>{"temperature": "29°C", "rain_probability": "85%", "weather_alert": "午後大雨特報", "air_quality": "良好"}</code>'
+      },
+      {
+        tag: 'tag-thought',
+        label: 'Thought 2 (評估局勢與推理)',
+        content: '觀測到降雨機率高達 85% 且發布了午後大雨特報。河濱公園屬於戶外開闊且無遮蔽處，遇大雨或雷擊風險極高。資訊已充分，我不需再調用其他工具，可以直接組織最終回覆，建議改為室內運動並說明具體天候理由。'
+      },
+      {
+        tag: 'tag-final',
+        label: 'Final Answer (最終回答)',
+        content: '<b>建議今天下午不要前往大佳河濱公園慢跑喔！</b><br>氣象資料顯示台北今日下午降雨機率高達 85%，且中央氣象署已發布午後大雨特報。河濱沿岸空曠無遮蔽，遇驟雨易積水且有安全隱憂，建議今天改至室內運動中心或健身房運動會更安全舒服！'
+      }
+    ];
+
+    let currentStepIdx = 0;
+    const timelineContainer = document.getElementById('timelineContainer');
+    const btnNextStep = document.getElementById('btnNextStep');
+
+    function renderStep(idx) {
+      const step = steps[idx];
+      const div = document.createElement('div');
+      div.className = 'timeline-step';
+      div.innerHTML = `
+        <div class="step-icon active">${idx + 1}</div>
+        <div class="step-content">
+          <span class="step-tag ${step.tag}">${step.label}</span>
+          <div style="font-size: 0.92rem; color: var(--ink-heading); line-height: 1.6;">${step.content}</div>
+        </div>
+      `;
+      timelineContainer.appendChild(div);
+    }
+
+    btnNextStep.addEventListener('click', () => {
+      if (currentStepIdx < steps.length) {
+        renderStep(currentStepIdx);
+        currentStepIdx++;
+        if (currentStepIdx === steps.length) {
+          btnNextStep.textContent = '重置模擬 (Reset)';
+        }
+      } else {
+        timelineContainer.innerHTML = '';
+        currentStepIdx = 0;
+        btnNextStep.textContent = '下一步 (Next Step) →';
+        renderStep(currentStepIdx);
+        currentStepIdx++;
+      }
+    });
+
+    // 預設渲染第一步
+    renderStep(0);
+    currentStepIdx = 1;
+  </script>
+</body>
+</html>

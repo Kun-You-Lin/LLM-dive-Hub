@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>現代 RAG 系統架構設計：從 Chunking 到重排序 - LLM Dive Hub</title>
+  <meta name="description" content="深入解析切塊策略、語意 Embedding、BM25 關鍵字混合檢索與 Cross-Encoder Rerank 的落地關鍵。">
+  <link rel="stylesheet" href="../../assets/css/global.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    /* RAG 互動沙盒專屬樣式 */
+    .rag-pipeline-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin: 20px 0;
+      padding: 14px;
+      background: var(--bg-subtle);
+      border-radius: var(--radius-sm);
+      overflow-x: auto;
+    }
+    .pipe-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--ink-heading);
+      min-width: 80px;
+      text-align: center;
+    }
+    .pipe-step span {
+      font-size: 0.75rem;
+      color: var(--ink-muted);
+      font-weight: 500;
+    }
+    .pipe-arrow {
+      color: var(--primary);
+      font-weight: 800;
+      font-size: 1.1rem;
+    }
+    .rag-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .control-card {
+      background: var(--bg-card);
+      border: 1px solid var(--ink-border);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+    }
+    .control-label {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--ink-heading);
+      margin-bottom: 10px;
+      display: block;
+    }
+    .rag-options {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .rag-btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--ink-border);
+      background: var(--bg-subtle);
+      color: var(--ink-body);
+      font-size: 0.84rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .rag-btn.active {
+      background: var(--primary);
+      color: #FFFFFF;
+      border-color: var(--primary);
+    }
+    .metrics-panel {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin: 16px 0;
+    }
+    .metric-box {
+      background: #FFFFFF;
+      border: 1px solid var(--ink-border);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+    }
+    .metric-val {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: var(--primary);
+    }
+    .metric-title {
+      font-size: 0.78rem;
+      color: var(--ink-muted);
+    }
+    .passage-card {
+      background: #FFFFFF;
+      border: 1.5px solid var(--ink-border);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 10px;
+      transition: all 0.2s;
+    }
+    .passage-card.top-hit {
+      border-color: var(--accent-emerald);
+      background: #F0FDF4;
+    }
+    @media (max-width: 640px) {
+      .rag-controls { grid-template-columns: 1fr; }
+      .metrics-panel { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="reading-progress-bar" id="progressBar"></div>
+
+  <header class="top-nav">
+    <div class="nav-container">
+      <a href="../../index.html" class="back-link">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+        <span>返回講義庫首頁</span>
+      </a>
+      <span style="font-weight: 700; color: var(--accent-purple); font-size: 0.95rem;">單元 02 ・ 檢索增強 RAG</span>
+    </div>
+  </header>
+
+  <main class="lesson-wrap">
+    <header class="lesson-hero">
+      <span class="lesson-badge" style="background: var(--accent-purple-light); color: var(--accent-purple);">檢索增強篇</span>
+      <h1 class="lesson-title">現代 RAG 系統架構設計：從 Chunking 到重排序</h1>
+      <p class="lesson-subtitle">
+        告別胡言亂語的「幻覺（Hallucination）」！打造企業級精準私有知識庫檢索管線。
+      </p>
+      <div class="lesson-meta-bar">
+        <span>⏱️ 預估閱讀 18 分鐘</span>
+        <span>📊 難度：進階實戰</span>
+        <span>🔄 2026-11 更新</span>
+      </div>
+    </header>
+
+    <section class="lesson-section goals-card">
+      <h2 style="font-size: 1.25rem; margin-bottom: 8px;">🎯 本單元學習目標</h2>
+      <ul class="goals-list">
+        <li>釐清純向量檢索在處理型號、代碼與特定數字時的「語意失焦」缺陷。</li>
+        <li>掌握切塊（Chunking）、混合檢索（Hybrid Search）與重排序（Reranking）的三級漏斗架構。</li>
+        <li>透過互動沙盒切換不同檢索策略，直觀對比召回品質與上下文噪聲。</li>
+      </ul>
+    </section>
+
+    <section class="lesson-section">
+      <h2>🌊 現代 RAG 的「三級漏斗」全景架構</h2>
+      <p>
+        傳統幼稚的 RAG（Naive RAG）通常只是簡單地把整份 PDF 切成每 500 字一塊，丟進向量資料庫，問問題時拉出 Top-3 送給 LLM。
+        在真實世界中，這種做法會頻繁遭遇「<b>檢索噪聲過高、關鍵數字被切斷、LLM 答非所問</b>」的窘境。
+      </p>
+      <p>現代生產環境採取的標準架構是<b>三級檢索漏斗（Three-Stage Pipeline）</b>：</p>
+
+      <div class="rag-pipeline-bar">
+        <div class="pipe-step">1. 文本切塊<span>Chunking + Overlap</span></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step">2. 雙路粗篩<span>Vector + BM25</span></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step">3. 混合融合<span>RRF 排名整合</span></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step">4. 精密重排<span>Cross-Encoder Rerank</span></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step">5. 提示裝填<span>LLM Synthesis</span></div>
+      </div>
+
+      <div class="callout callout-tip">
+        <b>💡 為什麼需要「混合檢索（Hybrid Search）」？</b><br>
+        • <b>向量檢索 (Dense Embedding)</b> 擅長捕捉「意圖與近義詞」（如問「電腦好卡」能找到「記憶體不足」）。<br>
+        • <b>關鍵字檢索 (BM25 Sparse)</b> 擅長精確命中「特定編號與專有名詞」（如問「產品型號 X1-Pro-2024」或「錯誤碼 0x8004」）。兩者結合才能做到攻守兼備！
+      </div>
+    </section>
+
+    <!-- 互動沙盒 -->
+    <section class="lesson-section">
+      <h2>🧪 互動體驗沙盒：RAG 檢索管線策略實驗室</h2>
+      <p>測試情境：使用者提問 <b>「請問公司 2024 年 Q3 伺服器採購預算超支了多少百分比？」</b>。請嘗試調整下方檢索參數，觀察命中結果的變化：</p>
+
+      <div class="sandbox-card">
+        <div class="sandbox-header">
+          <span class="sandbox-title" style="color: var(--accent-purple);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            即時檢索漏斗模擬器
+          </span>
+          <span style="font-size: 0.85rem; color: var(--ink-muted);">切換策略即時計算</span>
+        </div>
+
+        <div class="rag-controls">
+          <div class="control-card">
+            <span class="control-label">1. 切塊大小 (Chunk Size)</span>
+            <div class="rag-options">
+              <button class="rag-btn" data-type="chunk" data-val="small">小 (128 字)</button>
+              <button class="rag-btn active" data-type="chunk" data-val="medium">中 (512 字)</button>
+              <button class="rag-btn" data-type="chunk" data-val="large">大 (1024 字)</button>
+            </div>
+          </div>
+
+          <div class="control-card">
+            <span class="control-label">2. 檢索模式 (Retrieval Mode)</span>
+            <div class="rag-options">
+              <button class="rag-btn" data-type="mode" data-val="vector">純向量 (Vector)</button>
+              <button class="rag-btn" data-type="mode" data-val="bm25">純關鍵字 (BM25)</button>
+              <button class="rag-btn active" data-type="mode" data-val="hybrid">混合 (Hybrid + RRF)</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-subtle); padding: 12px 18px; border-radius: 8px; margin-bottom: 20px;">
+          <span style="font-size: 0.9rem; font-weight: 700; color: var(--ink-heading);">3. 開啟 Cross-Encoder Reranker（精密重排序）</span>
+          <label style="position: relative; display: inline-block; width: 44px; height: 24px;">
+            <input type="checkbox" id="rerankToggle" checked style="opacity: 0; width: 0; height: 0;">
+            <span id="sliderBtn" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--primary); transition: .3s; border-radius: 24px;"></span>
+          </label>
+        </div>
+
+        <!-- 效能指標 -->
+        <div class="metrics-panel">
+          <div class="metric-box">
+            <div class="metric-val" id="metricPrecision" style="color: var(--accent-emerald);">96%</div>
+            <div class="metric-title">檢索精準度 (Precision)</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-val" id="metricNoise" style="color: var(--accent-amber);">12%</div>
+            <div class="metric-title">無效上下文噪聲 (Noise)</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-val" id="metricConfidence" style="color: var(--primary);">極高</div>
+            <div class="metric-title">LLM 回答可信度</div>
+          </div>
+        </div>
+
+        <!-- 檢索回傳結果清單 -->
+        <div style="margin-top: 20px;">
+          <div style="font-size: 0.9rem; font-weight: 700; color: var(--ink-heading); margin-bottom: 10px;">
+            📄 最終送入 LLM 上下文之 Top 命中段落：
+          </div>
+          <div id="passagesContainer">
+            <!-- 動態段落卡片 -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 程式碼範例 -->
+    <section class="lesson-section">
+      <h2>💻 混合檢索與 Rerank 實戰代碼 (Python)</h2>
+      <pre><code>from langchain_community.retrievers import BM25Retriever
+from langchain.retrievers import EnsembleRetriever
+from sentence_transformers import CrossEncoder
+
+# 步驟 1: 建立 BM25 關鍵字與向量雙路檢索器
+bm25_retriever = BM25Retriever.from_documents(chunks)
+vector_retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
+
+# 步驟 2: 透過 RRF (Reciprocal Rank Fusion) 進行混合粗篩
+hybrid_retriever = EnsembleRetriever(
+    retrievers=[bm25_retriever, vector_retriever],
+    weights=[0.4, 0.6]
+)
+initial_docs = hybrid_retriever.invoke(user_query)
+
+# 步驟 3: 使用 Cross-Encoder 精密重排，篩出 Top-3 高價值段落
+reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+pairs = [[user_query, doc.page_content] for doc in initial_docs]
+scores = reranker.predict(pairs)
+
+# 依分數排序並選取最高分
+ranked_docs = [doc for _, doc in sorted(zip(scores, initial_docs), reverse=True)][:3]</code></pre>
+    </section>
+
+    <!-- 隨堂思考題 -->
+    <section class="lesson-section">
+      <h2>🤔 隨堂思考題</h2>
+      <details class="quiz-item">
+        <summary>問題 1：既然 Cross-Encoder Reranker 效果這麼好，為什麼不一開始就拿它檢索全庫 100 萬篇文檔？</summary>
+        <div class="quiz-answer">
+          <p>
+            <b>解答：</b>因為 <b>計算複雜度（Computational Cost）</b> 的巨大差異！<br>
+            • <b>Bi-Encoder（向量檢索）</b>：可以預先將 100 萬篇文檔離線編碼成向量存入索引。檢索時只需將使用者的提問轉成一個向量，進行點積計算，透過 HNSW 索引幾毫秒即可完成。<br>
+            • <b>Cross-Encoder（重排器）</b>：必須將「問題」與「段落」拼在一起 <code>[Query, Passage]</code> 共同送入 Transformer 進行全員注意力計算。如果對 100 萬篇文檔全部做 Cross-Encoder，一次檢索可能需要數十分鐘！因此工業界一律採用「雙路粗篩抓出前 50 篇 → Reranker 挑出前 3 篇」的高效架構。
+          </p>
+        </div>
+      </details>
+
+      <details class="quiz-item">
+        <summary>問題 2：切塊大小（Chunk Size）過大或過小，分別會引發什麼問題？</summary>
+        <div class="quiz-answer">
+          <p>
+            <b>解答：</b><br>
+            • <b>切太小（如 50 字）</b>：語意嚴重斷裂，可能這塊寫著「該伺服器型號為 A100」，下一塊寫著「其功耗為 400W」，檢索時只命中其中一塊，導致 LLM 無法得知這 400W 是屬於哪個型號。<br>
+            • <b>切太大（如 2000 字）</b>：單一塊內混雜過多無關雜訊，稀釋了 Embedding 向量的焦點（導致語意不精準），且白白浪費 LLM 的 Context Window 與計算 Token 費用。
+          </p>
+        </div>
+      </details>
+    </section>
+
+    <nav class="lesson-pagination">
+      <a href="../transformer-attention/index.html" class="btn-nav-page btn-prev">← 上一單元：Self-Attention</a>
+      <a href="../llm-agent-patterns/index.html" class="btn-nav-page btn-next">單元 03：AI Agent 核心模式 →</a>
+    </nav>
+  </main>
+
+  <footer class="footer">
+    <p>© 2026 LLM Dive Hub ・ 遵循 AGENTS.md 規範開發 ｜ 中正大學 資管所 林坤佑</p>
+  </footer>
+
+  <script>
+    window.addEventListener('scroll', () => {
+      const winScroll = document.documentElement.scrollTop;
+      const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+      const scrolled = (winScroll / height) * 100;
+      document.getElementById('progressBar').style.width = scrolled + '%';
+    });
+
+    let currentChunk = 'medium';
+    let currentMode = 'hybrid';
+    let isRerank = true;
+
+    const metricPrecision = document.getElementById('metricPrecision');
+    const metricNoise = document.getElementById('metricNoise');
+    const metricConfidence = document.getElementById('metricConfidence');
+    const passagesContainer = document.getElementById('passagesContainer');
+    const rerankToggle = document.getElementById('rerankToggle');
+
+    document.querySelectorAll('.rag-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const type = btn.getAttribute('data-type');
+        const val = btn.getAttribute('data-val');
+        document.querySelectorAll(`.rag-btn[data-type="${type}"]`).forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        if (type === 'chunk') currentChunk = val;
+        if (type === 'mode') currentMode = val;
+        updateRAG();
+      });
+    });
+
+    rerankToggle.addEventListener('change', () => {
+      isRerank = rerankToggle.checked;
+      document.getElementById('sliderBtn').style.backgroundColor = isRerank ? 'var(--primary)' : '#CBD5E1';
+      updateRAG();
+    });
+
+    function updateRAG() {
+      let precision = 85;
+      let noise = 20;
+      let confidence = '高';
+
+      if (currentMode === 'vector') { precision -= 15; noise += 15; }
+      if (currentMode === 'bm25') { precision -= 20; noise += 18; }
+      if (currentMode === 'hybrid') { precision += 10; noise -= 8; }
+
+      if (currentChunk === 'small') { precision -= 8; noise -= 5; }
+      if (currentChunk === 'large') { noise += 20; precision -= 5; }
+
+      if (isRerank) {
+        precision += 12;
+        noise -= 12;
+      } else {
+        precision -= 14;
+        noise += 16;
+      }
+
+      precision = Math.min(99, Math.max(35, precision));
+      noise = Math.min(85, Math.max(5, noise));
+
+      if (precision >= 90) confidence = '極高 (精準命中)';
+      else if (precision >= 75) confidence = '良好 (多數答對)';
+      else if (precision >= 55) confidence = '普通 (伴隨雜訊)';
+      else confidence = '危險 (易產生幻覺)';
+
+      metricPrecision.textContent = precision + '%';
+      metricNoise.textContent = noise + '%';
+      metricConfidence.textContent = confidence;
+
+      renderPassages();
+    }
+
+    function renderPassages() {
+      passagesContainer.innerHTML = '';
+      const items = [
+        {
+          title: "財務部 2024Q3 結算報告.pdf (段落 14)",
+          text: "針對本季資料中心與 GPU 運算伺服器之採購項目，原編列預算為 4,200 萬元，實支 4,830 萬元，超支比例達 15.0%，主因受全球伺服器模組缺料與匯率波動影響。",
+          score: isRerank ? "Cross-Encoder 分數: 0.98 (第一相關)" : "粗篩匹配度: 0.81",
+          isTop: true
+        },
+        {
+          title: "資訊處 2024 年度設備維護計畫書.docx (段落 5)",
+          text: "預計於 2024 年第四季進行全院伺服器韌體更新與負載壓力測試，總編列維護費用約 120 萬元...",
+          score: isRerank ? "Cross-Encoder 分數: 0.32" : "粗篩匹配度: 0.76",
+          isTop: false
+        }
+      ];
+
+      items.forEach(it => {
+        const div = document.createElement('div');
+        div.className = `passage-card ${it.isTop ? 'top-hit' : ''}`;
+        div.innerHTML = `
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+            <b style="font-size: 0.88rem; color: var(--ink-heading);">${it.title}</b>
+            <span style="font-size: 0.78rem; font-weight: 700; color: ${it.isTop ? 'var(--accent-emerald)' : 'var(--ink-muted)'};">${it.score}</span>
+          </div>
+          <p style="font-size: 0.86rem; color: var(--ink-body); margin: 0; line-height: 1.5;">${it.text}</p>
+        `;
+        passagesContainer.appendChild(div);
+      });
+    }
+
+    updateRAG();
+  </script>
+</body>
+</html>

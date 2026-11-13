@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM Dive Hub・大型語言模型與 AI Agent 互動講義庫</title>
+  <meta name="description" content="專為 AI 自學者與資訊領域學生打造的現代化互動講義庫。內建 Attention 矩陣計算、RAG 向量檢索與 ReAct Agent 決策模擬器。">
+  <link rel="stylesheet" href="assets/css/global.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="assets/images/logo.svg">
+</head>
+<body>
+  <!-- 頂部導覽列 -->
+  <header class="top-nav">
+    <div class="nav-container">
+      <a href="index.html" class="brand-link">
+        <img src="assets/images/logo.svg" alt="LLM Dive Hub Logo" class="brand-logo">
+        <span>LLM Dive Hub</span>
+        <span class="brand-badge">講義庫</span>
+      </a>
+      <div class="nav-links">
+        <a href="AGENTS.md" class="nav-item">專案憲法 (AGENTS.md)</a>
+        <a href="log.md" class="nav-item">改版日誌</a>
+        <a href="https://github.com" target="_blank" rel="noopener" class="nav-github-btn" id="githubRepoLink">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          <span>GitHub</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero 區域 -->
+  <section class="hero-section">
+    <div class="hero-wrap">
+      <div class="hero-pill">
+        <span>✨ 2026 現代化互動講義庫架構</span>
+      </div>
+      <h1 class="hero-title">深入理解大型語言模型與 <br><span class="gradient-text">AI Agent 核心機制</span></h1>
+      <p class="hero-desc">
+        不同於一次性生成的 Vibe Coding，本專案建立一套標準化、自我包含的「互動式講義規範」。
+        每單元皆內建直覺互動沙盒，讓複雜的 AI 概念一目了然。
+      </p>
+      <div class="hero-stats">
+        <div class="stat-item">
+          <b>3 大單元</b>
+          <span>核心技術深潛</span>
+        </div>
+        <div class="stat-item">
+          <b>100%</b>
+          <span>即時操作沙盒</span>
+        </div>
+        <div class="stat-item">
+          <b>Zero Build</b>
+          <span>原生極速瀏覽</span>
+        </div>
+        <div class="stat-item">
+          <b>AGENTS.md</b>
+          <span>標準化擴充規範</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 控制列：搜尋與分類篩選 -->
+  <section class="control-section">
+    <div class="search-box-wrap">
+      <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input type="text" id="lessonSearch" class="search-input" placeholder="搜尋講義標題、演算法、關鍵字（例如：Attention, RAG, ReAct, Wiki）...">
+    </div>
+    <div class="filter-pills">
+      <button class="pill-btn active" data-filter="all">全部單元 (<span id="visibleCount">3</span>)</button>
+      <button class="pill-btn" data-filter="foundation">基礎架構</button>
+      <button class="pill-btn" data-filter="rag">檢索增強 (RAG)</button>
+      <button class="pill-btn" data-filter="agent">AI Agent 實戰</button>
+    </div>
+  </section>
+
+  <!-- 講義卡片網格 -->
+  <main class="lessons-grid">
+    <!-- 單元一：Transformer Attention -->
+    <a href="lessons/transformer-attention/index.html" class="lesson-card" data-category="foundation" data-tags="transformer attention qkv softmax multi-head 注意力機制 矩陣乘法">
+      <div class="card-top">
+        <span class="badge badge-blue">基礎架構</span>
+        <span class="card-time">⏱️ 15 分鐘</span>
+      </div>
+      <h2 class="card-title">直覺理解 Self-Attention 與 Multi-Head 機制</h2>
+      <p class="card-desc">
+        徹底拆解 Attention is All You Need 核心公式！透過生活化圖解與互動權重熱圖，手把手看懂 Query、Key、Value 如何算出詞彙間的語意關聯。
+      </p>
+      <div class="card-footer">
+        <span class="card-level">⭐ 初階入門 ・ 附動態矩陣計算沙盒</span>
+        <span class="card-action">開始學習 →</span>
+      </div>
+    </a>
+
+    <!-- 單元二：RAG System Design -->
+    <a href="lessons/rag-system-design/index.html" class="lesson-card" data-category="rag" data-tags="rag 檢索增強 chunking embedding vector hybrid search rerank 向量檢索 重排序">
+      <div class="card-top">
+        <span class="badge badge-purple">檢索增強 (RAG)</span>
+        <span class="card-time">⏱️ 18 分鐘</span>
+      </div>
+      <h2 class="card-title">現代 RAG 系統架構設計：從 Chunking 到重排序</h2>
+      <p class="card-desc">
+        為什麼單純的向量檢索不夠用？深入解析切塊策略、語意 Embedding、BM25 關鍵字混合檢索（Hybrid Search）與 Cross-Encoder Rerank 的落地關鍵。
+      </p>
+      <div class="card-footer">
+        <span class="card-level">⭐⭐ 進階實戰 ・ 附檢索切塊模擬器</span>
+        <span class="card-action">開始學習 →</span>
+      </div>
+    </a>
+
+    <!-- 單元三：LLM Agent Patterns -->
+    <a href="lessons/llm-agent-patterns/index.html" class="lesson-card" data-category="agent" data-tags="agent react karpathy wiki tools memory 知識庫 工具調用 決策循環">
+      <div class="card-top">
+        <span class="badge badge-emerald">AI Agent 實戰</span>
+        <span class="card-time">⏱️ 20 分鐘</span>
+      </div>
+      <h2 class="card-title">AI Agent 核心架構：ReAct 循環與 Karpathy LLM Wiki 實戰</h2>
+      <p class="card-desc">
+        從單純對話走向自主智慧體！掌握 Thought-Action-Observation 決策循環，並實作 Andrej Karpathy 提倡的「持久複利 LLM Wiki 模式」與規範指引。
+      </p>
+      <div class="card-footer">
+        <span class="card-level">⭐⭐⭐ 系統設計 ・ 附 ReAct 模擬沙盒</span>
+        <span class="card-action">開始學習 →</span>
+      </div>
+    </a>
+  </main>
+
+  <!-- 專案規範與擴充宣導卡片 -->
+  <section style="max-width: var(--wrap-max); margin: 0 auto 60px; padding: 0 24px;">
+    <div style="background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); color: #F8FAFC; border-radius: var(--radius-lg); padding: 36px 40px; box-shadow: var(--shadow-lg); display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center;">
+      <div>
+        <span style="background: rgba(37, 99, 235, 0.3); color: #93C5FD; border: 1px solid rgba(147, 197, 253, 0.3); padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 700;">AI 開發者指引</span>
+        <h2 style="font-size: 1.6rem; margin: 12px 0 8px; color: #FFFFFF;">想為這個講義庫新增一個全新單元嗎？</h2>
+        <p style="color: #94A3B8; font-size: 0.98rem; line-height: 1.6; max-width: 640px;">
+          本專案受課堂「呆一布講義」啟發，所有版面、色彩系統、單元骨架與互動沙盒皆由 <code>AGENTS.md</code> 標準化規範。任何 AI 只要閱讀該手冊，皆能在 5 分鐘內無縫擴充高品質頁面。
+        </p>
+      </div>
+      <div>
+        <a href="AGENTS.md" style="display: inline-block; background: var(--primary); color: #FFFFFF; font-weight: 700; padding: 12px 24px; border-radius: var(--radius-sm); text-decoration: none; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4); white-space: nowrap;">閱讀 AGENTS.md 規範 →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 頁腳 -->
+  <footer class="footer">
+    <div style="max-width: var(--wrap-max); margin: 0 auto; display: flex; flex-direction: column; gap: 8px;">
+      <p><b>LLM Dive Hub</b> ・ 現代大型語言模型與 AI Agent 互動講義庫</p>
+      <p style="font-size: 0.82rem; color: var(--ink-muted);">
+        第九週作業：建立自己的 AGENTS.md / CLAUDE.md ｜ 中正大學 資管所 林坤佑
+      </p>
+      <p style="font-size: 0.82rem; color: var(--ink-muted); margin-top: 4px;">
+        遵循標準化規範開發 ・ 支援 GitHub Pages 隨推即播
+      </p>
+    </div>
+  </footer>
+
+  <script src="assets/js/main.js"></script>
+</body>
+</html>

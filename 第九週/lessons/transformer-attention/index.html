@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>直覺理解 Self-Attention 與 Multi-Head 機制 - LLM Dive Hub</title>
+  <meta name="description" content="徹底拆解 Attention is All You Need 核心公式！生活化圖解與互動權重熱圖，看懂 Query、Key、Value 如何算出詞彙間的語意關聯。">
+  <link rel="stylesheet" href="../../assets/css/global.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    /* 互動注意力模擬器專屬樣式 */
+    .sentence-selector {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    .token-chip {
+      padding: 8px 16px;
+      border-radius: 8px;
+      background: var(--bg-subtle);
+      border: 1.5px solid var(--ink-border);
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .token-chip:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+    .token-chip.selected {
+      background: var(--primary);
+      color: #FFFFFF;
+      border-color: var(--primary);
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+    .attention-matrix-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .matrix-row {
+      display: grid;
+      grid-template-columns: 100px 1fr 60px;
+      align-items: center;
+      gap: 16px;
+    }
+    .bar-bg {
+      background: var(--bg-subtle);
+      height: 24px;
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+    }
+    .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #60A5FA, var(--primary));
+      border-radius: 6px;
+      transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .score-txt {
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-align: right;
+    }
+    .qkv-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin: 24px 0;
+    }
+    .qkv-box {
+      background: var(--bg-card);
+      border: 1.5px solid var(--ink-border);
+      border-radius: var(--radius-sm);
+      padding: 18px;
+    }
+    .qkv-box b {
+      display: block;
+      color: var(--primary);
+      font-size: 1.1rem;
+      margin-bottom: 6px;
+    }
+    @media (max-width: 640px) {
+      .qkv-cards { grid-template-columns: 1fr; }
+      .matrix-row { grid-template-columns: 70px 1fr 50px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- 頂部閱讀進度指示器 -->
+  <div class="reading-progress-bar" id="progressBar"></div>
+
+  <!-- 頂部導覽列 -->
+  <header class="top-nav">
+    <div class="nav-container">
+      <a href="../../index.html" class="back-link">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+        <span>返回講義庫首頁</span>
+      </a>
+      <span style="font-weight: 700; color: var(--primary); font-size: 0.95rem;">單元 01 ・ Transformer 基礎</span>
+    </div>
+  </header>
+
+  <!-- 主內容容器 -->
+  <main class="lesson-wrap">
+    <!-- 單元標頭 -->
+    <header class="lesson-hero">
+      <span class="lesson-badge">基礎架構篇</span>
+      <h1 class="lesson-title">直覺理解 Self-Attention 與 Multi-Head 機制</h1>
+      <p class="lesson-subtitle">
+        告別傳統 RNN 的序列記憶遺忘難題！拆解 2017 年改變世界至今的 Transformer 核心引擎。
+      </p>
+      <div class="lesson-meta-bar">
+        <span>⏱️ 預估閱讀 15 分鐘</span>
+        <span>📊 難度：初階入門</span>
+        <span>🔄 2026-11 更新</span>
+      </div>
+    </header>
+
+    <!-- 本章學習目標 -->
+    <section class="lesson-section goals-card">
+      <h2 style="font-size: 1.25rem; margin-bottom: 8px;">🎯 本單元學習目標</h2>
+      <ul class="goals-list">
+        <li>掌握 Query、Key、Value 在圖書館檢索比喻中的直覺角色。</li>
+        <li>理解縮放點積注意力（Scaled Dot-Product Attention）中除以 $\sqrt{d_k}$ 的數學防爆用意。</li>
+        <li>透過下方互動模擬器，親自觀察詞彙在不同上下文中的動態注意力轉移。</li>
+      </ul>
+    </section>
+
+    <!-- 核心直覺拆解 -->
+    <section class="lesson-section">
+      <h2>💡 核心直覺：圖書館與 Q、K、V 檢索哲學</h2>
+      <p>
+        在過去的 RNN 與 LSTM 中，模型必須像人類「一個字接一個字讀小說」一樣，讀到句尾時往往早已忘記句首的主詞。
+        2017 年 Google 團隊在《Attention Is All You Need》中拋棄了循環結構，提出了 <b>Self-Attention（自注意力機制）</b>。
+      </p>
+      <p>
+        自注意力機制最生動的理解方式是「<b>圖書館借書檢索比喻</b>」：
+      </p>
+
+      <div class="qkv-cards">
+        <div class="qkv-box">
+          <b>🔍 Query (Q) - 檢索提問</b>
+          <p style="font-size: 0.9rem; color: var(--ink-body); margin: 0;">當前詞彙想要打聽的事物。「我是 'it'，我想知道我代表誰？」</p>
+        </div>
+        <div class="qkv-box">
+          <b>🏷️ Key (K) - 索引標籤</b>
+          <p style="font-size: 0.9rem; color: var(--ink-body); margin: 0;">每個詞彙身上帶有的關鍵特徵標籤，用來與別人的 Query 比對相關度。</p>
+        </div>
+        <div class="qkv-box">
+          <b>📦 Value (V) - 實質內容</b>
+          <p style="font-size: 0.9rem; color: var(--ink-body); margin: 0;">一旦被選中，該詞彙所能貢獻給整體的具體語意向量與上下文資訊。</p>
+        </div>
+      </div>
+
+      <div class="callout callout-note">
+        <b>📐 核心計算公式：</b><br>
+        <code>Attention(Q, K, V) = softmax( (Q × Kᵀ) / √dₖ ) × V</code><br>
+        第一步算出 Q 與各 K 的點積相似度，第二步除以 $\sqrt{d_k}$ 縮放避免極端梯度，第三步經由 Softmax 轉化為總和為 100% 的權重分配，最後加權混合 Value！
+      </div>
+    </section>
+
+    <!-- 互動體驗沙盒 -->
+    <section class="lesson-section">
+      <h2>🧪 互動體驗沙盒：注意力權重熱圖模擬器</h2>
+      <p>點擊下方句子中的任意詞彙，實時觀察模型在該詞彙視角下，對句子中其他詞彙所分配的注意力權重百分比：</p>
+
+      <div class="sandbox-card">
+        <div class="sandbox-header">
+          <span class="sandbox-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            即時 Attention 計算視覺化
+          </span>
+          <span style="font-size: 0.85rem; color: var(--ink-muted);">點選詞彙切換視角</span>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+          <label style="font-size: 0.88rem; font-weight: 600; color: var(--ink-muted); display: block; margin-bottom: 8px;">示範語句：代名詞消歧義 (Pronoun Coreference)</label>
+          <div class="sentence-selector" id="tokenList">
+            <!-- 動態生成詞彙 -->
+          </div>
+        </div>
+
+        <div style="background: var(--bg-page); padding: 18px; border-radius: var(--radius-sm); border: 1px solid var(--ink-border);">
+          <div style="font-size: 0.9rem; font-weight: 700; color: var(--ink-heading); margin-bottom: 12px;" id="matrixTitle">
+            當前聚焦詞彙：<span style="color: var(--primary);" id="activeTokenName">tired</span> 視角下的注意力分佈
+          </div>
+          <div class="attention-matrix-grid" id="matrixRows">
+            <!-- 動態渲染注意力條 -->
+          </div>
+        </div>
+
+        <div style="margin-top: 16px; font-size: 0.85rem; color: var(--ink-muted); line-height: 1.5;">
+          💡 <b>觀察現象</b>：當你點選 <code>tired</code> 或 <code>it</code> 時，注意力大幅集中在 <code>animal</code> 上（而不是 <code>street</code>），這就是 Self-Attention 解決指代語意關聯的強大能力！
+        </div>
+      </div>
+    </section>
+
+    <!-- Multi-Head Attention -->
+    <section class="lesson-section">
+      <h2>👥 為什麼需要「多頭（Multi-Head）」注意力？</h2>
+      <p>
+        單一組 Q、K、V 就像一個看事情角度單一的評委。多頭注意力（Multi-Head Attention）的做法是：將向量維度切割成 8 組或更高等分（例如 8 個 Heads），讓不同的 Head 各司其職：
+      </p>
+      <ul>
+        <li><b>Head 1</b>：專門捕捉<b>主詞與動詞</b>的結構關係（語法視角）。</li>
+        <li><b>Head 2</b>：專門捕捉<b>代名詞（it, they）</b>所指向的實體對象（指代消歧）。</li>
+        <li><b>Head 3</b>：專門捕捉<b>時間、地點等修飾副詞</b>（語境視角）。</li>
+      </ul>
+      <p>最後將所有 Head 的結果串接（Concatenate），並通過一個線性投影矩陣，完成最豐富的多角度語意融合。</p>
+    </section>
+
+    <!-- 程式碼實戰 -->
+    <section class="lesson-section">
+      <h2>💻 15 行 PyTorch 極簡核心實作</h2>
+      <p>以下是使用 PyTorch 原生張量運算實現 Scaled Dot-Product Attention 的精簡寫法：</p>
+      <pre><code>import torch
+import torch.nn.functional as F
+
+def scaled_dot_product_attention(Q, K, V, mask=None):
+    # d_k 是 Key 向量的最後一個維度大小
+    d_k = Q.size(-1)
+    
+    # 步驟 1: 計算 Q 與 K^T 的矩陣乘法，並除以 sqrt(d_k) 縮放
+    scores = torch.matmul(Q, K.transpose(-2, -1)) / (d_k ** 0.5)
+    
+    if mask is not None:
+        scores = scores.masked_fill(mask == 0, -1e9)
+        
+    # 步驟 2: 通過 Softmax 將分數轉化為總和為 1 的機率分佈
+    attention_weights = F.softmax(scores, dim=-1)
+    
+    # 步驟 3: 與 Value 向量進行矩陣加權混合
+    output = torch.matmul(attention_weights, V)
+    return output, attention_weights</code></pre>
+    </section>
+
+    <!-- 隨堂思考題 -->
+    <section class="lesson-section">
+      <h2>🤔 隨堂思考題</h2>
+      <details class="quiz-item">
+        <summary>問題 1：為什麼計算點積後一定要除以 √dₖ？不除會發生什麼事？</summary>
+        <div class="quiz-answer">
+          <p>
+            <b>解答：</b>當向量維度 $d_k$ 很大時（例如 64 或 128），向量點積的結果方差會變得非常大，導致某些分數特別高。
+            當這些極端分數送進 <code>softmax</code> 函數後，會被推擠到 Softmax 的兩端飽和區，其局部導數（梯度）幾乎趨近於零，這會造成<b>梯度消失（Vanishing Gradient）</b>，導致神經網絡無法有效反向傳播學習！除以 $\sqrt{d_k}$ 能將方差拉回標準常態分佈，維持梯度順暢流動。
+          </p>
+        </div>
+      </details>
+
+      <details class="quiz-item">
+        <summary>問題 2：Self-Attention 的計算複雜度是多少？在長文本（如 10 萬字）時會面臨什麼挑戰？</summary>
+        <div class="quiz-answer">
+          <p>
+            <b>解答：</b>若輸入長度為 $N$，每個 token 都要與其他 $N$ 個 token 進行點積計算，因此時間與空間複雜度皆為 <b>$O(N^2)$ 二次平方級</b>！
+            當文本從 1,000 字增長到 100,000 字時，計算量會暴增 10,000 倍，導致 GPU 顯存迅速被 Attention 矩陣撐爆。這也是 FlashAttention、RoPE、Sliding Window 等長文本優化技術應運而生的主因。
+          </p>
+        </div>
+      </details>
+    </section>
+
+    <!-- 底部導航 -->
+    <nav class="lesson-pagination">
+      <a href="../../index.html" class="btn-nav-page btn-prev">← 返回講義目錄</a>
+      <a href="../rag-system-design/index.html" class="btn-nav-page btn-next">單元 02：現代 RAG 系統設計 →</a>
+    </nav>
+  </main>
+
+  <!-- 頁腳 -->
+  <footer class="footer">
+    <p>© 2026 LLM Dive Hub ・ 遵循 AGENTS.md 規範開發 ｜ 中正大學 資管所 林坤佑</p>
+  </footer>
+
+  <script>
+    // 閱讀進度條
+    window.addEventListener('scroll', () => {
+      const winScroll = document.documentElement.scrollTop;
+      const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+      const scrolled = (winScroll / height) * 100;
+      document.getElementById('progressBar').style.width = scrolled + '%';
+    });
+
+    // 互動注意力熱圖模擬資料
+    const tokens = ["The", "animal", "didn't", "cross", "street", "because", "it", "was", "tired"];
+    
+    // 預設注意力分佈矩陣 (聚焦詞索引 -> 各詞權重)
+    const attentionWeightsData = {
+      "tired": [0.03, 0.48, 0.05, 0.04, 0.06, 0.08, 0.22, 0.04, 0.00],
+      "it":    [0.02, 0.65, 0.03, 0.02, 0.05, 0.04, 0.00, 0.03, 0.16],
+      "cross": [0.02, 0.28, 0.12, 0.00, 0.42, 0.03, 0.04, 0.02, 0.07],
+      "animal":[0.08, 0.00, 0.06, 0.24, 0.12, 0.04, 0.18, 0.04, 0.24],
+      "street":[0.14, 0.08, 0.04, 0.46, 0.00, 0.06, 0.08, 0.04, 0.10],
+      "because":[0.04, 0.12, 0.08, 0.18, 0.14, 0.00, 0.16, 0.06, 0.22]
+    };
+
+    const tokenListEl = document.getElementById('tokenList');
+    const matrixRowsEl = document.getElementById('matrixRows');
+    const activeTokenNameEl = document.getElementById('activeTokenName');
+
+    function renderTokens() {
+      tokenListEl.innerHTML = '';
+      tokens.forEach((tok, idx) => {
+        const btn = document.createElement('button');
+        btn.className = `token-chip ${tok === 'tired' ? 'selected' : ''}`;
+        btn.textContent = tok;
+        btn.onclick = () => selectToken(tok);
+        tokenListEl.appendChild(btn);
+      });
+    }
+
+    function selectToken(selectedToken) {
+      document.querySelectorAll('.token-chip').forEach(btn => {
+        btn.classList.toggle('selected', btn.textContent === selectedToken);
+      });
+      activeTokenNameEl.textContent = selectedToken;
+
+      const weights = attentionWeightsData[selectedToken] || [0.1, 0.15, 0.05, 0.15, 0.15, 0.1, 0.1, 0.1, 0.1];
+      renderMatrix(weights);
+    }
+
+    function renderMatrix(weights) {
+      matrixRowsEl.innerHTML = '';
+      tokens.forEach((tok, idx) => {
+        const weight = weights[idx] || 0.05;
+        const pct = (weight * 100).toFixed(1);
+
+        const row = document.createElement('div');
+        row.className = 'matrix-row';
+        row.innerHTML = `
+          <span style="font-weight: 600; font-size: 0.9rem; color: var(--ink-heading);">${tok}</span>
+          <div class="bar-bg">
+            <div class="bar-fill" style="width: ${pct}%;"></div>
+          </div>
+          <span class="score-txt" style="color: ${pct > 25 ? 'var(--primary)' : 'var(--ink-muted)'};">${pct}%</span>
+        `;
+        matrixRowsEl.appendChild(row);
+      });
+    }
+
+    // 初始化
+    renderTokens();
+    selectToken('tired');
+  </script>
+</body>
+</html>
